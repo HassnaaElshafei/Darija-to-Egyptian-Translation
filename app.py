@@ -1,5 +1,14 @@
 import streamlit as st
 import torch
+import types
+
+# Streamlit Cloud sometimes ships a torch build without torch.distributed.tensor (DTensor).
+# PEFT expects it, so we add a harmless stub to prevent AttributeError.
+if hasattr(torch, "distributed") and not hasattr(torch.distributed, "tensor"):
+    class _FakeDTensor: 
+        pass
+    torch.distributed.tensor = types.SimpleNamespace(DTensor=_FakeDTensor)
+    
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
@@ -200,3 +209,4 @@ if translate_btn:
 
 st.markdown("---")
 st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
+
