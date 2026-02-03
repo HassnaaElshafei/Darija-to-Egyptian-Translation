@@ -1,8 +1,9 @@
 streamlit==1.37.1
-torch
+torch==2.3.1
 transformers==4.44.2
 tokenizers==0.19.1
 sentencepiece
 accelerate
 peft==0.18.1
 safetensors
+
