@@ -1,7 +1,8 @@
-streamlit
+streamlit==1.37.1
 torch
-transformers>=4.38,<4.41
+transformers==4.44.2
+tokenizers==0.19.1
 sentencepiece
 accelerate
-peft
+peft==0.18.1
 safetensors
