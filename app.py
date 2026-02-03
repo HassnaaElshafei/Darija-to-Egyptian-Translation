@@ -1,14 +1,20 @@
 import streamlit as st
 import torch
+try:
+    import torch.distributed.tensor as _tdt  # noqa: F401
+    torch.distributed.tensor = _tdt
+except Exception:
+    # Create a dummy DTensor type so PEFT's isinstance_toggle doesn't crash
+    class _DummyDTensor:  # noqa: D401
+        pass
+
+    if hasattr(torch, "distributed"):
+        if not hasattr(torch.distributed, "tensor"):
+            class _DummyTensorModule:
+                DTensor = _DummyDTensor
+            torch.distributed.tensor = _DummyTensorModule()
 import types
 from peft import PeftConfig
-# Streamlit Cloud sometimes ships a torch build without torch.distributed.tensor (DTensor).
-# PEFT expects it, so we add a harmless stub to prevent AttributeError.
-if hasattr(torch, "distributed") and not hasattr(torch.distributed, "tensor"):
-    class _FakeDTensor: 
-        pass
-    torch.distributed.tensor = types.SimpleNamespace(DTensor=_FakeDTensor)
-    
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
@@ -210,5 +216,6 @@ if translate_btn:
 
 st.markdown("---")
 st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
+
 
 
