@@ -4,6 +4,7 @@ transformers==4.44.2
 tokenizers==0.19.1
 sentencepiece
 accelerate
-peft==0.18.1
+peft==0.13.2
 safetensors
+
 
