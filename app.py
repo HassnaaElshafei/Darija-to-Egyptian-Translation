@@ -1,7 +1,7 @@
 import streamlit as st
 import torch
 import types
-
+from peft import PeftConfig
 # Streamlit Cloud sometimes ships a torch build without torch.distributed.tensor (DTensor).
 # PEFT expects it, so we add a harmless stub to prevent AttributeError.
 if hasattr(torch, "distributed") and not hasattr(torch.distributed, "tensor"):
@@ -52,7 +52,8 @@ def load_nllb_pipeline():
     # But simplest/most compatible:
     model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE)
 
-    model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH)
+    cfg = PeftConfig.from_pretrained(NLLB_ADAPTER_PATH)
+    model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH, config=cfg)
 
     if DEVICE == "cuda":
         model = model.to("cuda")
@@ -209,4 +210,5 @@ if translate_btn:
 
 st.markdown("---")
 st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
+
 
