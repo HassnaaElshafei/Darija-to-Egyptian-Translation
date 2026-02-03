@@ -14,8 +14,8 @@ DARJA2MSA_MODEL = "Saidtaoussi/AraT5_Darija_to_MSA"
 ARAT5_BASE = "UBC-NLP/AraT5v2-base-1024"
 
 # Local adapter paths
-NLLB_ADAPTER_PATH = "models/nllb_adapter"
-ARAT5_ADAPTER_PATH = "models/arat5v2_adapter"
+NLLB_ADAPTER_PATH = "HassnaaElshafei/nllb_adapter"
+ARAT5_ADAPTER_PATH = "HassnaaElshafei/arat5v2_adapter"
 
 # ----------------------------
 # DEVICE
