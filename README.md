@@ -5,6 +5,9 @@ inference pipelines, exposed through a Streamlit web interface for easy testing
 and comparison.
 
 ---
+## Live Demo (Streamlit)
+Try the app here:
+https://darija-to-egyptian-translation-jjthztbcxdtr8g5nfrn82u.streamlit.app/
 
 ## Features
 
