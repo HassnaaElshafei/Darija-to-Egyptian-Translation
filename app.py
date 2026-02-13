@@ -14,7 +14,7 @@ except Exception:
                 DTensor = _DummyDTensor
             torch.distributed.tensor = _DummyTensorModule()
 import types
-from peft import PeftConfig
+#from peft import PeftConfig
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
@@ -59,7 +59,9 @@ def load_nllb_pipeline():
     model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE)
 
     #cfg = PeftConfig.from_pretrained(NLLB_ADAPTER_PATH)
-    model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH, config=cfg)
+    #model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH, config=cfg)
+    model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH)
+
 
     if DEVICE == "cuda":
         model = model.to("cuda")
@@ -216,6 +218,7 @@ if translate_btn:
 
 st.markdown("---")
 st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
+
 
 
 
