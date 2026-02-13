@@ -58,7 +58,7 @@ def load_nllb_pipeline():
     # But simplest/most compatible:
     model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE)
 
-    cfg = PeftConfig.from_pretrained(NLLB_ADAPTER_PATH)
+    #cfg = PeftConfig.from_pretrained(NLLB_ADAPTER_PATH)
     model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH, config=cfg)
 
     if DEVICE == "cuda":
@@ -216,6 +216,7 @@ if translate_btn:
 
 st.markdown("---")
 st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
+
 
 
 
