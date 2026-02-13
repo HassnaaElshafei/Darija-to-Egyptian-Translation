@@ -1,20 +1,5 @@
 import streamlit as st
 import torch
-try:
-    import torch.distributed.tensor as _tdt  # noqa: F401
-    torch.distributed.tensor = _tdt
-except Exception:
-    # Create a dummy DTensor type so PEFT's isinstance_toggle doesn't crash
-    class _DummyDTensor:  # noqa: D401
-        pass
-
-    if hasattr(torch, "distributed"):
-        if not hasattr(torch.distributed, "tensor"):
-            class _DummyTensorModule:
-                DTensor = _DummyDTensor
-            torch.distributed.tensor = _DummyTensorModule()
-import types
-#from peft import PeftConfig
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from peft import PeftModel
 
@@ -28,17 +13,17 @@ NLLB_TGT_LANG = "arz_Arab"  # Egyptian Arabic (Arabic script)
 DARJA2MSA_MODEL = "Saidtaoussi/AraT5_Darija_to_MSA"
 ARAT5_BASE = "UBC-NLP/AraT5v2-base-1024"
 
-# Local adapter paths
-NLLB_ADAPTER_PATH = "HassnaaElshafei/nllb_adapter"
-ARAT5_ADAPTER_PATH = "HassnaaElshafei/arat5v2_adapter"
+# HF adapter repos (LoRA)
+NLLB_ADAPTER = "HassnaaElshafei/nllb_adapter"
+ARAT5_ADAPTER = "HassnaaElshafei/arat5v2_adapter"
+
 
 # ----------------------------
 # DEVICE
 # ----------------------------
 def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
 
 DEVICE = get_device()
 
@@ -52,27 +37,13 @@ def load_nllb_pipeline():
     Loads: NLLB base + your LoRA adapter
     """
     tokenizer = AutoTokenizer.from_pretrained(NLLB_BASE)
+    base = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE)
 
-    # If you want lighter GPU memory, you can try:
-    # model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE, device_map="auto", torch_dtype=torch.float16)
-    # But simplest/most compatible:
-    model = AutoModelForSeq2SeqLM.from_pretrained(NLLB_BASE)
-
-    #cfg = PeftConfig.from_pretrained(NLLB_ADAPTER_PATH)
-    #model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH, config=cfg)
-    model = PeftModel.from_pretrained(model, NLLB_ADAPTER_PATH)
-
+    model = PeftModel.from_pretrained(base, NLLB_ADAPTER)
 
     if DEVICE == "cuda":
         model = model.to("cuda")
     model.eval()
-
-    # optional: merge for faster inference
-    try:
-        model = model.merge_and_unload()
-        model.eval()
-    except Exception:
-        pass
 
     return tokenizer, model
 
@@ -82,14 +53,14 @@ def load_arat5_pipeline():
     """
     Loads: Darija->MSA public model + AraT5v2 base + your LoRA adapter
     """
-    # Darija -> MSA
-    tok_d = AutoTokenizer.from_pretrained(DARJA2MSA_MODEL)
+    # Darija -> MSA (force slow tokenizer for stability)
+    tok_d = AutoTokenizer.from_pretrained(DARJA2MSA_MODEL, use_fast=False)
     model_d = AutoModelForSeq2SeqLM.from_pretrained(DARJA2MSA_MODEL)
 
-    # MSA -> Egyptian (your adapter on AraT5v2 base)
-    tok_e = AutoTokenizer.from_pretrained(ARAT5_BASE)
+    # MSA -> Egyptian (AraT5 base + your adapter) (force slow tokenizer)
+    tok_e = AutoTokenizer.from_pretrained(ARAT5_BASE, use_fast=False)
     base_e = AutoModelForSeq2SeqLM.from_pretrained(ARAT5_BASE)
-    model_e = PeftModel.from_pretrained(base_e, ARAT5_ADAPTER_PATH)
+    model_e = PeftModel.from_pretrained(base_e, ARAT5_ADAPTER)
 
     if DEVICE == "cuda":
         model_d = model_d.to("cuda")
@@ -98,28 +69,19 @@ def load_arat5_pipeline():
     model_d.eval()
     model_e.eval()
 
-    # optional merge for stability/speed
-    try:
-        model_e = model_e.merge_and_unload()
-        model_e.eval()
-    except Exception:
-        pass
-
     return tok_d, model_d, tok_e, model_e
 
 
 # ----------------------------
 # INFERENCE FUNCTIONS
 # ----------------------------
-def translate_with_nllb(text: str, tokenizer, model,
-                        max_length=128, num_beams=5):
+def translate_with_nllb(text: str, tokenizer, model, max_length=128, num_beams=5):
     tokenizer.src_lang = NLLB_SRC_LANG
 
     inputs = tokenizer(text, return_tensors="pt")
     if DEVICE == "cuda":
         inputs = {k: v.to("cuda") for k, v in inputs.items()}
 
-    # Force Egyptian output
     forced_bos = tokenizer.convert_tokens_to_ids(NLLB_TGT_LANG)
 
     with torch.no_grad():
@@ -134,8 +96,9 @@ def translate_with_nllb(text: str, tokenizer, model,
     return tokenizer.decode(out[0], skip_special_tokens=True).strip()
 
 
-def translate_with_arat5_two_step(text: str, tok_d, model_d, tok_e, model_e,
-                                  max_length=128, num_beams=5):
+def translate_with_arat5_two_step(
+    text: str, tok_d, model_d, tok_e, model_e, max_length=128, num_beams=5
+):
     # Step 1: Darija -> MSA
     in1 = tok_d(text, return_tensors="pt", padding=True)
     if DEVICE == "cuda":
@@ -143,14 +106,11 @@ def translate_with_arat5_two_step(text: str, tok_d, model_d, tok_e, model_e,
 
     with torch.no_grad():
         out1 = model_d.generate(**in1, max_length=max_length)
-
     msa = tok_d.decode(out1[0], skip_special_tokens=True).strip()
 
     # Step 2: MSA -> Egyptian
-    prefix = "حول للمصري: "
-    in2_text = prefix + msa
-
-    in2 = tok_e(in2_text, return_tensors="pt")
+    in2_text = "حول للمصري: " + msa
+    in2 = tok_e(in2_text, return_tensors="pt", padding=True)
     if DEVICE == "cuda":
         in2 = {k: v.to("cuda") for k, v in in2.items()}
 
@@ -172,17 +132,20 @@ def translate_with_arat5_two_step(text: str, tok_d, model_d, tok_e, model_e,
 # UI
 # ----------------------------
 st.set_page_config(page_title="Darija → Egyptian Translator", layout="centered")
-st.title("🇲🇦 Darija → 🇪🇬 Egyptian Translator")
-
-st.caption(f"Running on: **{DEVICE}**")
+st.title("Darija → Egyptian Translator")
+st.caption(f"Running on: {DEVICE}")
 
 model_choice = st.radio(
     "Choose translation method:",
     ["NLLB (direct)", "AraT5 (Darija→MSA→Egyptian)"],
-    horizontal=True
+    horizontal=True,
 )
 
-text = st.text_area("Enter Moroccan sentence (Darija):", height=120, placeholder="مثال: كيداير؟ كلشي مزيان؟")
+text = st.text_area(
+    "Enter Moroccan sentence (Darija):",
+    height=120,
+    placeholder="مثال: كيداير؟ كلشي مزيان؟",
+)
 
 with st.expander("Decoding settings"):
     max_length = st.slider("max_length", 32, 256, 128, 8)
@@ -198,28 +161,30 @@ if translate_btn:
     with st.spinner("Translating..."):
         if model_choice == "NLLB (direct)":
             tok, model = load_nllb_pipeline()
-            out = translate_with_nllb(text, tok, model, max_length=max_length, num_beams=num_beams)
+            out = translate_with_nllb(
+                text, tok, model, max_length=max_length, num_beams=num_beams
+            )
 
-            st.subheader("🇪🇬 Output (Egyptian)")
+            st.subheader("Output (Egyptian)")
             st.write(out)
 
         else:
             tok_d, model_d, tok_e, model_e = load_arat5_pipeline()
             out, msa_mid = translate_with_arat5_two_step(
-                text, tok_d, model_d, tok_e, model_e,
-                max_length=max_length, num_beams=num_beams
+                text,
+                tok_d,
+                model_d,
+                tok_e,
+                model_e,
+                max_length=max_length,
+                num_beams=num_beams,
             )
 
-            st.subheader("🇪🇬 Output (Egyptian)")
+            st.subheader("Output (Egyptian)")
             st.write(out)
 
-            st.subheader("🧩 Intermediate (MSA)")
+            st.subheader("Intermediate (MSA)")
             st.write(msa_mid)
 
 st.markdown("---")
-st.caption("Tip: If NLLB is slow on CPU, run on GPU or reduce num_beams.")
-
-
-
-
-
+st.caption("If NLLB is slow or crashes on CPU, reduce num_beams or use a smaller NLLB base.")
